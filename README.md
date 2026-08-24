@@ -11,6 +11,7 @@
   - [Running the Installation Script](#running-the-installation-script)
   - [Installation Prompts](#installation-prompts)
   - [Entering the Container](#entering-the-container)
+  - [Host Command and Application Menu Entry](#host-command-and-application-menu-entry)
 - [Resetting PowerShell Configuration](#resetting-powershell-configuration)
 - [Clean Reinstall](#clean-reinstall)
 - [What Gets Installed](#what-gets-installed)
@@ -65,6 +66,26 @@ After installation completes, enter the container with:
 ```bash
 distrobox enter PWSHenv
 ```
+
+### Host Command and Application Menu Entry
+
+During installation, a `powershell` wrapper script is installed to `~/.local/bin/powershell` on your host system. This lets you launch PowerShell directly from your terminal without typing the full `distrobox enter` command:
+
+```bash
+powershell
+```
+
+The wrapper execs into the `PWSHenv` container and starts PowerShell. If you run it from inside the `PWSHenv` container itself (its `~/.local/bin` is visible there too, since Distrobox shares the whole host filesystem), the wrapper detects this and execs `pwsh` directly instead of trying to re-enter the container, avoiding recursion.
+
+**Adding `~/.local/bin` to PATH:** If `~/.local/bin` is not already on your `PATH`, the installation script prints a reminder. Add this line to your shell startup file (for example, `~/.bashrc` or `~/.zshrc`):
+
+```bash
+export PATH="${HOME}/.local/bin:$PATH"
+```
+
+**Desktop application menu entry:** The bootstrap script also creates a PowerShell application menu entry. A `.desktop` file is created inside the container and exported to your host's application menu (GNOME launcher, KDE Plasma app menu, etc.) via `distrobox-export --app`. PowerShell appears as "PowerShell (on PWSHenv)" and can be launched from your application launcher alongside any other installed applications.
+
+This desktop export is non-critical. If `distrobox-export` is unavailable inside the container or fails, the bootstrap script warns and continues without it—the `powershell` command and `distrobox enter` remain fully functional.
 
 ## Resetting PowerShell Configuration
 

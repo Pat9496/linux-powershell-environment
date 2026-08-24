@@ -11,6 +11,7 @@
   - [Das Installationsskript ausführen](#das-installationsskript-ausführen)
   - [Installationseingaben](#installationseingaben)
   - [Den Container betreten](#den-container-betreten)
+  - [Host-Befehl und Eintrag im Anwendungsmenü](#host-befehl-und-eintrag-im-anwendungsmenü)
 - [PowerShell-Konfiguration zurücksetzen](#powershell-konfiguration-zurücksetzen)
 - [Bereinigte Neuinstallation](#bereinigte-neuinstallation)
 - [Was wird installiert](#was-wird-installiert)
@@ -65,6 +66,26 @@ Nach Abschluss der Installation wird der Container mit folgendem Befehl betreten
 ```bash
 distrobox enter PWSHenv
 ```
+
+### Host-Befehl und Eintrag im Anwendungsmenü
+
+Während der Installation wird ein `powershell`-Wrapper-Skript in `~/.local/bin/powershell` auf dem Host-System installiert. Dies ermöglicht das direkte Starten von PowerShell vom Terminal aus, ohne den vollständigen `distrobox enter`-Befehl eingeben zu müssen:
+
+```bash
+powershell
+```
+
+Das Wrapper-Skript wird in den `PWSHenv`-Container ausgeführt und startet PowerShell. Wird das Wrapper-Skript von innerhalb des `PWSHenv`-Containers selbst ausgeführt (sein `~/.local/bin` ist dort ebenfalls sichtbar, da Distrobox das gesamte Host-Dateisystem freigibt), erkennt das Wrapper-Skript dies und startet `pwsh` direkt, statt zu versuchen, den Container erneut zu betreten, wodurch Rekursion vermieden wird.
+
+**`~/.local/bin` zu PATH hinzufügen:** Falls `~/.local/bin` nicht bereits in `PATH` aufgenommen ist, gibt das Installationsskript eine Erinnerung aus. Die folgende Zeile zur Shell-Startdatei hinzufügen (zum Beispiel `~/.bashrc` oder `~/.zshrc`):
+
+```bash
+export PATH="${HOME}/.local/bin:$PATH"
+```
+
+**Eintrag im Desktop-Anwendungsmenü:** Das Bootstrap-Skript erstellt auch einen PowerShell-Eintrag im Anwendungsmenü. Eine `.desktop`-Datei wird innerhalb des Containers erstellt und über `distrobox-export --app` in das Anwendungsmenü des Hosts exportiert (GNOME Launcher, KDE Plasma App-Menü, etc.). PowerShell wird als „PowerShell (on PWSHenv)" angezeigt und kann zusammen mit anderen installierten Anwendungen vom Anwendungsstarter aus gestartet werden.
+
+Dieser Desktop-Export ist nicht kritisch. Falls `distrobox-export` innerhalb des Containers nicht verfügbar ist oder fehlschlägt, warnt das Bootstrap-Skript und fährt ohne diesen fort – der `powershell`-Befehl und `distrobox enter` bleiben vollständig funktionsfähig.
 
 ## PowerShell-Konfiguration zurücksetzen
 

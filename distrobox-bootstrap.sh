@@ -46,6 +46,43 @@ install_baseline_packages() {
   fi
 }
 
+export_powershell_app() {
+  local desktop_dir="${HOME}/.local/share/applications"
+  local desktop_file="${desktop_dir}/powershell.desktop"
+
+  if ! mkdir -p -- "${desktop_dir}"; then
+    printf 'Warning: failed to create %s; skipping desktop application menu integration.\n' "${desktop_dir}" >&2
+    return 0
+  fi
+
+  if ! cat > "${desktop_file}" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=PowerShell
+Comment=PowerShell 7 (PWSHenv)
+Exec=pwsh
+Icon=utilities-terminal
+Terminal=true
+Categories=Development;ConsoleOnly;
+EOF
+  then
+    printf 'Warning: failed to write %s; skipping desktop application menu integration.\n' "${desktop_file}" >&2
+    return 0
+  fi
+
+  if ! command -v distrobox-export >/dev/null 2>&1; then
+    printf 'Warning: distrobox-export not found inside the container; skipping desktop application menu integration.\n' >&2
+    return 0
+  fi
+
+  if ! distrobox-export --app "${desktop_file}"; then
+    printf 'Warning: distrobox-export failed; PowerShell will not appear in the host application menu.\n' >&2
+    return 0
+  fi
+
+  printf 'Exported PowerShell to the host application menu via distrobox-export.\n'
+}
+
 run_module_installer() {
   printf 'Running module installer: %s\n' "${MODULE_INSTALLER}"
   if ! sudo pwsh -NoLogo -NoProfile -NonInteractive -File "${MODULE_INSTALLER}"; then
@@ -69,6 +106,8 @@ main() {
     printf 'Error: pwsh not found on PATH after installation.\n' >&2
     exit 1
   fi
+
+  export_powershell_app
 
   install_baseline_packages
 

@@ -3,9 +3,9 @@ set -euo pipefail
 
 # Design choice: nothing installed inside the PWSHenv container is ever
 # exported to the host (no `distrobox-export`, no host-side .desktop entries
-# or wrapper binaries). The only host-side artifact this script creates is
-# the container itself; PowerShell and its modules stay inside it and are
-# reached with `distrobox enter`.
+# for arbitrary container packages). The only host-side artifact this script
+# creates is the container itself, plus one thin wrapper script (`powershell`)
+# that simply shells out to `distrobox enter` at run time.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 readonly SCRIPT_DIR
@@ -19,6 +19,8 @@ readonly CONTAINER_NAME="PWSHenv"
 # detection.
 readonly BASE_IMAGE="ubuntu:24.04"
 readonly DEFAULT_PWSHENV_HOME="${HOME}/PWSHenv-home"
+readonly HOST_BIN_DIR="${HOME}/.local/bin"
+readonly HOST_WRAPPER_NAME="powershell"
 
 # PowerShell's standard XDG Base Directory locations on Linux: config,
 # cache, and data/modules respectively. Nothing else under a home directory
@@ -115,6 +117,54 @@ run_bootstrap_in_container() {
   distrobox enter --name "${name}" -- bash "${BOOTSTRAP_SCRIPT}"
 }
 
+install_host_wrapper() {
+  local wrapper_path="${HOST_BIN_DIR}/${HOST_WRAPPER_NAME}" tmp_path=""
+  mkdir -p -- "${HOST_BIN_DIR}"
+
+  trap '[[ -n "${tmp_path}" ]] && rm -f -- "${tmp_path}"' EXIT
+
+  tmp_path="$(mktemp -- "${HOST_BIN_DIR}/.${HOST_WRAPPER_NAME}.XXXXXX")"
+  cat > "${tmp_path}" <<WRAPPER_EOF
+#!/usr/bin/env bash
+# Distrobox shares the host filesystem so deeply that generic container
+# markers like /run/.containerenv and /.dockerenv don't reliably show up
+# inside it; distrobox's own docs recommend checking \$CONTAINER_ID instead.
+# Compare against this wrapper's own container name, since \$CONTAINER_ID is
+# also set (to some other container's name) when running inside a different
+# distrobox container that happens to share this same ~/.local/bin wrapper.
+if [[ "\${CONTAINER_ID:-}" == "${CONTAINER_NAME}" ]]; then
+  IFS=':' read -r -a path_parts <<< "\${PATH}"
+  filtered_path=""
+  for path_part in "\${path_parts[@]}"; do
+    if [[ "\${path_part}" != "${HOST_BIN_DIR}" ]]; then
+      filtered_path="\${filtered_path:+\${filtered_path}:}\${path_part}"
+    fi
+  done
+  PATH="\${filtered_path}" exec pwsh "\$@"
+else
+  exec distrobox enter "${CONTAINER_NAME}" -- pwsh "\$@"
+fi
+WRAPPER_EOF
+  chmod +x -- "${tmp_path}"
+  mv -f -- "${tmp_path}" "${wrapper_path}"
+  tmp_path=""
+  printf 'Installed host wrapper: %s\n' "${wrapper_path}"
+
+  trap - EXIT
+}
+
+check_host_bin_on_path() {
+  case ":${PATH}:" in
+    *":${HOST_BIN_DIR}:"*) ;;
+    *)
+      printf '\nNote: %s is not on your PATH.\n' "${HOST_BIN_DIR}" >&2
+      # $PATH here is literal text for the user's ~/.bashrc, not meant to expand in this script.
+      # shellcheck disable=SC2016
+      printf 'Add it to your shell startup file (e.g. export PATH="%s:$PATH" in ~/.bashrc) so the %s command is found.\n' "${HOST_BIN_DIR}" "${HOST_WRAPPER_NAME}" >&2
+      ;;
+  esac
+}
+
 # The rm command runs via `bash -c` inside the container so that $HOME is
 # expanded by the container's own shell rather than the host's; a bare `~`
 # on this line would be expanded by the host shell before distrobox ever
@@ -160,7 +210,8 @@ usage() {
   printf 'Usage: %s [--reset-config | --clean-reinstall] [-h|--help]\n' "$(basename -- "$0")"
   printf '\n'
   printf '  (no flags)         Create (or recreate) the %s Distrobox container and\n' "${CONTAINER_NAME}"
-  printf '                     install PowerShell 7 and its modules inside it.\n'
+  printf '                     install PowerShell 7 and its modules inside it. Also\n'
+  printf '                     installs a "%s" host command to enter it directly.\n' "${HOST_WRAPPER_NAME}"
   printf '  --reset-config     Reset PowerShell'"'"'s user configuration inside the\n'
   printf '                     existing %s container (profile, module state,\n' "${CONTAINER_NAME}"
   printf '                     history) without recreating the container. Requires\n'
@@ -244,7 +295,11 @@ main() {
 
   run_bootstrap_in_container "${CONTAINER_NAME}"
 
+  install_host_wrapper
+  check_host_bin_on_path
+
   printf '\nPWSHenv container "%s" is ready. Enter it with: distrobox enter %s\n' "${CONTAINER_NAME}" "${CONTAINER_NAME}"
+  printf 'PowerShell is also available directly from the host terminal via the %s command.\n' "${HOST_WRAPPER_NAME}"
 }
 
 main "$@"
