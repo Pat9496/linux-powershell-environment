@@ -1,5 +1,9 @@
+# PWSHenv
+
 [![Shell: Bash](https://img.shields.io/badge/shell-bash-blue)](https://www.gnu.org/software/bash/)
 [![PowerShell: 7](https://img.shields.io/badge/powershell-7-blue)](https://github.com/PowerShell/PowerShell)
+
+An automated setup script for a Distrobox-based PowerShell 7 environment tailored for Microsoft-cloud administration.
 
 [Deutsche Version](README.de.md)
 
