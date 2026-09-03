@@ -5,6 +5,12 @@
 # The calling bootstrap script is responsible for invoking it that way; no internal
 # sudo/re-exec logic is implemented here.
 
+param(
+    [ValidateSet('true', 'false')]
+    [string]
+    $EnableStarship = 'false'
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -32,14 +38,9 @@ $requiredModules = @(
 
 $failedModules = [System.Collections.Generic.List[string]]::new()
 
-function Add-ModuleToAllUsersProfile {
+function Initialize-AllUsersProfile {
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true)]
-        [ValidateNotNullOrEmpty()]
-        [string]
-        $ModuleName
-    )
+    param ()
 
     $profilePath = $PROFILE.AllUsersAllHosts
 
@@ -53,11 +54,44 @@ function Add-ModuleToAllUsersProfile {
         New-Item -ItemType File -Path $profilePath -Force | Out-Null
     }
 
+    return $profilePath
+}
+
+function Add-ModuleToAllUsersProfile {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $ModuleName
+    )
+
+    $profilePath = Initialize-AllUsersProfile
+
     $pattern = "^Import-Module\s+$([regex]::Escape($ModuleName))\b"
     $alreadyPresent = Select-String -Path $profilePath -Pattern $pattern -Quiet
 
     if (-not $alreadyPresent) {
         Add-Content -Path $profilePath -Value "Import-Module $ModuleName"
+    }
+}
+
+function Add-StarshipInitToAllUsersProfile {
+    [CmdletBinding()]
+    param ()
+
+    $profilePath = Initialize-AllUsersProfile
+
+    # Runtime-guarded (Get-Command ... -ErrorAction SilentlyContinue) so this line silently
+    # no-ops on every future session start if Starship isn't actually reachable inside the
+    # container at that time — install-time host detection can't perfectly predict
+    # container-time availability across home-directory sharing modes.
+    $starshipInitLine = 'if (Get-Command starship -ErrorAction SilentlyContinue) { Invoke-Expression (&starship init powershell) }'
+    $pattern = [regex]::Escape($starshipInitLine)
+    $alreadyPresent = Select-String -Path $profilePath -Pattern $pattern -Quiet
+
+    if (-not $alreadyPresent) {
+        Add-Content -Path $profilePath -Value $starshipInitLine
     }
 }
 
@@ -97,6 +131,16 @@ foreach ($moduleName in $requiredModules) {
     }
     catch {
         Write-Warning "Failed to add module '$moduleName' to the all-users profile ('$($PROFILE.AllUsersAllHosts)'): $($_.Exception.Message)"
+    }
+}
+
+if ($EnableStarship -eq 'true') {
+    try {
+        Add-StarshipInitToAllUsersProfile
+        Write-Host "Activated Starship prompt initialization for all future sessions (added to the all-users profile)." -ForegroundColor Green
+    }
+    catch {
+        Write-Warning "Failed to add Starship prompt initialization to the all-users profile ('$($PROFILE.AllUsersAllHosts)'): $($_.Exception.Message)"
     }
 }
 

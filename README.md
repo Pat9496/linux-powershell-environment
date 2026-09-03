@@ -19,6 +19,9 @@ An automated setup script for a Distrobox-based PowerShell 7 environment tailore
 - [Resetting PowerShell Configuration](#resetting-powershell-configuration)
 - [Clean Reinstall](#clean-reinstall)
 - [What Gets Installed](#what-gets-installed)
+  - [PowerShell Modules](#powershell-modules)
+  - [Note: No Local Active Directory Module](#note-no-local-active-directory-module)
+  - [Starship Prompt Integration](#starship-prompt-integration)
 - [Home Directory Options](#home-directory-options)
   - [Using Your Existing Home](#using-your-existing-home)
   - [Creating a Separate PWSHenv Home](#creating-a-separate-pwshenv-home)
@@ -81,7 +84,10 @@ powershell
 
 The wrapper execs into the `PWSHenv` container and starts PowerShell. If you run it from inside the `PWSHenv` container itself (its `~/.local/bin` is visible there too, since Distrobox shares the whole host filesystem), the wrapper detects this and execs `pwsh` directly instead of trying to re-enter the container, avoiding recursion.
 
-**Adding `~/.local/bin` to PATH:** If `~/.local/bin` is not already on your `PATH`, the installation script prints a reminder. Add this line to your shell startup file (for example, `~/.bashrc` or `~/.zshrc`):
+**Adding `~/.local/bin` to PATH:** If `~/.local/bin` is not already on your `PATH`, the installation script handles it as follows:
+
+- **With chezmoi:** If chezmoi is installed and initialized on your host system (has a source directory), the script automatically appends `export PATH="${HOME}/.local/bin:$PATH"` to your shell startup file (`~/.bashrc` if you use Bash, `~/.zshrc` if you use Zsh). This addition is idempotent—if the line is already present, nothing is duplicated. The script then captures this change into chezmoi's source state using `chezmoi add` (or `chezmoi re-add` if the startup file was already chezmoi-managed). The change is now part of your chezmoi source state and will apply like any other chezmoi-managed change when you run `chezmoi apply` on this or other machines (after syncing your source repository).
+- **Without chezmoi:** If chezmoi is not installed or not initialized, the script prints a reminder. Manually add this line to your shell startup file:
 
 ```bash
 export PATH="${HOME}/.local/bin:$PATH"
@@ -100,6 +106,8 @@ To reset PowerShell's user configuration inside the container without recreating
 ```
 
 This flag requires the `PWSHenv` container to already exist. The script will prompt for confirmation, then remove `~/.config/powershell`, `~/.cache/powershell`, and `~/.local/share/powershell` inside the container (erasing the profile, module state, and history) without touching or rebuilding anything else.
+
+If chezmoi is installed and initialized, and your shell startup file is already chezmoi-managed, `--reset-config` also refreshes the PATH configuration line: it removes and re-appends `export PATH="${HOME}/.local/bin:$PATH"` to your startup file and re-captures that change with chezmoi. This gives you an explicit way to force a clean refresh of the chezmoi-captured configuration. If chezmoi is not in use, or the startup file is not managed by chezmoi, this behavior does not apply—`--reset-config` behaves exactly as described above with no additional changes.
 
 To view the help message and see all available flags, run:
 
@@ -137,7 +145,9 @@ The bootstrap script inside the container installs the following:
 - **Baseline packages** — `curl`, `ca-certificates`, `gnupg`, `git`, `jq`, `unzip`
 - **Kerberos support** — `krb5-user` package, for Kerberos authentication relevant to on-premises Active Directory integration
 
-The script then installs these PowerShell modules to the system-wide (AllUsers) scope:
+### PowerShell Modules
+
+The script installs these PowerShell modules to the system-wide (AllUsers) scope:
 
 - `Microsoft.Graph.Authentication` — required base module for `Connect-MgGraph`; every other Graph submodule depends on it
 - `Microsoft.Graph.Users` — Entra ID / Microsoft 365 user management
@@ -162,6 +172,25 @@ The Windows-only `ActiveDirectory` RSAT module has no Linux equivalent and canno
 $session = New-PSSession -ComputerName <domain-host> -Credential $cred
 Invoke-Command -Session $session -ScriptBlock { Get-ADUser ... }
 ```
+
+### Starship Prompt Integration
+
+PWSHenv can optionally integrate the Starship cross-shell prompt into PowerShell. You control this with two mutually exclusive command-line flags:
+
+- `--use-starship` — Force-enable Starship prompt integration.
+- `--no-starship` — Force-disable it.
+
+If neither flag is given, Starship integration is auto-detected silently: if the `starship` command is found on your host's `PATH`, it is enabled; otherwise it is disabled.
+
+These flags only take effect on a plain run or `--clean-reinstall` (both of which run the module installer inside the container). Combining either flag with `--reset-config` is an error, because `--reset-config` never re-runs the module installer, so the flag would have no effect.
+
+When enabled, the script adds this line to PowerShell's all-users profile inside the container:
+
+```powershell
+if (Get-Command starship -ErrorAction SilentlyContinue) { Invoke-Expression (&starship init powershell) }
+```
+
+This line is runtime-guarded—it checks for the `starship` command at each PowerShell session startup and silently does nothing if `starship` is not reachable at that moment. This matters because whether a host-installed `starship` binary is visible inside the container depends on which home-directory mode was chosen at install time (existing home vs. separate PWSHenv home) and how your container's PATH is configured. Because host-time detection cannot perfectly predict container-time availability, the runtime guard ensures Starship integration never breaks a PowerShell session if the binary becomes unavailable later.
 
 ## Home Directory Options
 

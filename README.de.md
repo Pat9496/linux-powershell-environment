@@ -19,6 +19,9 @@ Ein automatisiertes Installationsskript für eine Distrobox-basierte PowerShell 
 - [PowerShell-Konfiguration zurücksetzen](#powershell-konfiguration-zurücksetzen)
 - [Bereinigte Neuinstallation](#bereinigte-neuinstallation)
 - [Was wird installiert](#was-wird-installiert)
+  - [PowerShell-Module](#powershell-module)
+  - [Hinweis: Kein lokales Active Directory-Modul](#hinweis-kein-lokales-active-directory-modul)
+  - [Starship Prompt-Integration](#starship-prompt-integration)
 - [Optionen für das Home-Verzeichnis](#optionen-für-das-home-verzeichnis)
   - [Das bestehende Home verwenden](#das-bestehende-home-verwenden)
   - [Ein separates PWSHenv-Home erstellen](#ein-separates-pwshenv-home-erstellen)
@@ -81,7 +84,10 @@ powershell
 
 Das Wrapper-Skript wird in den `PWSHenv`-Container ausgeführt und startet PowerShell. Wird das Wrapper-Skript von innerhalb des `PWSHenv`-Containers selbst ausgeführt (sein `~/.local/bin` ist dort ebenfalls sichtbar, da Distrobox das gesamte Host-Dateisystem freigibt), erkennt das Wrapper-Skript dies und startet `pwsh` direkt, statt zu versuchen, den Container erneut zu betreten, wodurch Rekursion vermieden wird.
 
-**`~/.local/bin` zu PATH hinzufügen:** Falls `~/.local/bin` nicht bereits in `PATH` aufgenommen ist, gibt das Installationsskript eine Erinnerung aus. Die folgende Zeile zur Shell-Startdatei hinzufügen (zum Beispiel `~/.bashrc` oder `~/.zshrc`):
+**`~/.local/bin` zu PATH hinzufügen:** Falls `~/.local/bin` nicht bereits in `PATH` aufgenommen ist, wird das Installationsskript wie folgt verfahren:
+
+- **Mit chezmoi:** Falls chezmoi auf dem Host-System installiert und initialisiert ist (ein Source-Verzeichnis vorhanden ist), wird die Zeile `export PATH="${HOME}/.local/bin:$PATH"` automatisch zur Shell-Startdatei (`~/.bashrc` bei Bash, `~/.zshrc` bei Zsh) hinzugefügt. Diese Addition ist idempotent – ist die Zeile bereits vorhanden, wird nichts dupliziert. Das Skript erfasst diese Änderung dann im Source-State von chezmoi mit `chezmoi add` (oder `chezmoi re-add`, falls die Startdatei bereits von chezmoi verwaltet wurde). Die Änderung ist nun Teil des chezmoi-Source-State und wird wie jede andere chezmoi-verwaltete Änderung angewendet, wenn `chezmoi apply` auf diesem oder anderen Rechnern ausgeführt wird (nach der Synchronisierung des Source-Repository).
+- **Ohne chezmoi:** Falls chezmoi nicht installiert oder nicht initialisiert ist, gibt das Skript eine Erinnerung aus. Die folgende Zeile zur Shell-Startdatei hinzufügen:
 
 ```bash
 export PATH="${HOME}/.local/bin:$PATH"
@@ -100,6 +106,8 @@ Um die PowerShell-Benutzerkonfiguration innerhalb des Containers zurückzusetzen
 ```
 
 Das Flag erfordert, dass der `PWSHenv`-Container bereits existiert. Das Skript fordert zur Bestätigung auf und entfernt dann `~/.config/powershell`, `~/.cache/powershell` und `~/.local/share/powershell` innerhalb des Containers (wobei das Profil, der Modulzustand und die Historie gelöscht werden), ohne andere Komponenten zu berühren oder neu zu erstellen.
+
+Falls chezmoi installiert und initialisiert ist und die Shell-Startdatei bereits von chezmoi verwaltet wird, aktualisiert `--reset-config` auch die PATH-Konfigurationszeile: Die Zeile `export PATH="${HOME}/.local/bin:$PATH"` wird aus der Startdatei entfernt und wieder hinzugefügt, und die Änderung wird mit chezmoi erneut erfasst. Dies bietet eine explizite Möglichkeit, die chezmoi-erfasste Konfiguration zu aktualisieren. Falls chezmoi nicht verwendet wird oder die Startdatei nicht von chezmoi verwaltet wird, gilt dieses Verhalten nicht – `--reset-config` verhält sich genau wie oben beschrieben, ohne zusätzliche Änderungen.
 
 Um die Hilfemeldung anzuzeigen und alle verfügbaren Flags zu sehen:
 
@@ -137,7 +145,9 @@ Das Bootstrap-Skript innerhalb des Containers installiert Folgendes:
 - **Basis-Pakete** — `curl`, `ca-certificates`, `gnupg`, `git`, `jq`, `unzip`
 - **Kerberos-Unterstützung** — das Paket `krb5-user` für Kerberos-Authentifizierung relevant für die lokale Active Directory-Integration
 
-Das Skript installiert dann diese PowerShell-Module im systemweiten (AllUsers) Umfang:
+### PowerShell-Module
+
+Das Skript installiert diese PowerShell-Module im systemweiten (AllUsers) Umfang:
 
 - `Microsoft.Graph.Authentication` — erforderliches Basis-Modul für `Connect-MgGraph`; jedes andere Graph-Submodul hängt davon ab
 - `Microsoft.Graph.Users` — Entra ID- / Microsoft 365-Benutzerverwaltung
@@ -162,6 +172,25 @@ Das ausschließlich für Windows verfügbare RSAT-Modul `ActiveDirectory` hat ke
 $session = New-PSSession -ComputerName <domain-host> -Credential $cred
 Invoke-Command -Session $session -ScriptBlock { Get-ADUser ... }
 ```
+
+### Starship Prompt-Integration
+
+PWSHenv kann optional die Starship Cross-Shell-Prompt-Integration in PowerShell durchführen. Dies wird mit zwei sich gegenseitig ausschließenden Befehlszeilenflaggen gesteuert:
+
+- `--use-starship` — Erzwungene Aktivierung der Starship-Prompt-Integration.
+- `--no-starship` — Erzwungene Deaktivierung der Integration.
+
+Falls weder Flag angegeben ist, wird die Starship-Integration automatisch erkannt: Falls der Befehl `starship` in `PATH` des Hosts vorhanden ist, wird sie aktiviert; andernfalls wird sie deaktiviert.
+
+Diese Flags wirken sich nur auf einen normalen Lauf oder `--clean-reinstall` aus (beide führen das Modul-Installationsskript innerhalb des Containers aus). Das Kombinieren eines der Flags mit `--reset-config` ist ein Fehler, da `--reset-config` nie das Modul-Installationsskript erneut ausführt, daher hätte das Flag keine Wirkung.
+
+Bei Aktivierung wird diese Zeile zum PowerShell-Profil für alle Benutzer innerhalb des Containers hinzugefügt:
+
+```powershell
+if (Get-Command starship -ErrorAction SilentlyContinue) { Invoke-Expression (&starship init powershell) }
+```
+
+Diese Zeile wird zur Laufzeit geschützt – sie prüft bei jedem PowerShell-Sitzungsstart auf den Befehl `starship` und tut stillschweigend nichts, falls `starship` in diesem Moment nicht erreichbar ist. Dies ist wichtig, da die Sichtbarkeit einer auf dem Host installierten `starship`-Binärdatei innerhalb des Containers davon abhängt, welcher Home-Verzeichnis-Modus bei der Installation ausgewählt wurde (Bestehendes Home vs. separates PWSHenv-Home) und wie die Container-`PATH` konfiguriert ist. Da die Erkennung zum Installationszeitpunkt die Verfügbarkeit zum Container-Zeitpunkt nicht perfekt vorhersagen kann, stellt der Laufzeit-Schutz sicher, dass die Starship-Integration eine PowerShell-Sitzung nie bricht, falls die `starship`-Binärdatei später nicht mehr verfügbar ist.
 
 ## Optionen für das Home-Verzeichnis
 

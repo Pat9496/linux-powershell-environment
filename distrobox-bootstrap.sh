@@ -84,13 +84,16 @@ EOF
 }
 
 run_module_installer() {
+  local starship_decision="$1"
   printf 'Running module installer: %s\n' "${MODULE_INSTALLER}"
-  if ! sudo pwsh -NoLogo -NoProfile -NonInteractive -File "${MODULE_INSTALLER}"; then
+  if ! sudo pwsh -NoLogo -NoProfile -NonInteractive -File "${MODULE_INSTALLER}" -EnableStarship "${starship_decision}"; then
     printf 'Warning: module installer exited with a non-zero status; PowerShell itself is installed but some modules may be missing.\n' >&2
   fi
 }
 
 main() {
+  local starship_decision="${1:-false}"
+
   if ! command -v sudo >/dev/null 2>&1; then
     printf 'Error: sudo not found inside the container; cannot install packages.\n' >&2
     exit 1
@@ -111,7 +114,7 @@ main() {
 
   install_baseline_packages
 
-  run_module_installer
+  run_module_installer "${starship_decision}"
 
   printf 'PWSHenv container bootstrap complete. PowerShell 7 is installed.\n'
 }
