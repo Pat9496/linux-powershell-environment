@@ -225,10 +225,14 @@ Diese Flags wirken sich nur auf einen normalen Lauf oder `--clean-reinstall` aus
 Bei Aktivierung wird diese Zeile zum PowerShell-Profil für alle Benutzer innerhalb des Containers hinzugefügt:
 
 ```powershell
-if (Get-Command starship -ErrorAction SilentlyContinue) { Invoke-Expression (&starship init powershell) }
+if (Get-Command starship -ErrorAction SilentlyContinue) { $env:STARSHIP_CONFIG = '/etc/pwshenv/starship.toml'; Invoke-Expression (&starship init powershell) }
 ```
 
 Diese Zeile wird zur Laufzeit geschützt – sie prüft bei jedem PowerShell-Sitzungsstart auf den Befehl `starship` und tut stillschweigend nichts, falls `starship` in diesem Moment nicht erreichbar ist. Dies ist wichtig, da die Sichtbarkeit einer auf dem Host installierten `starship`-Binärdatei innerhalb des Containers davon abhängt, welcher Home-Verzeichnis-Modus bei der Installation ausgewählt wurde (Bestehendes Home vs. separates PWSHenv-Home) und wie die Container-`PATH` konfiguriert ist. Da die Erkennung zum Installationszeitpunkt die Verfügbarkeit zum Container-Zeitpunkt nicht perfekt vorhersagen kann, stellt der Laufzeit-Schutz sicher, dass die Starship-Integration eine PowerShell-Sitzung nie bricht, falls die `starship`-Binärdatei später nicht mehr verfügbar ist.
+
+Die Profil-Zeile setzt `$env:STARSHIP_CONFIG` auf eine dedizierte, nur im Container verfügbare Konfigurationsdatei, `/etc/pwshenv/starship.toml`, statt auf die eigene Starship-Konfiguration des Hosts. Diese Isolation ist beabsichtigt: Host-Shell-Konfigurationen enthalten häufig langsame benutzerdefinierte Module (z.B. SSH-Verbindungsprüfungen, die externe Befehle ausführen) und zahlreiche visuelle Segmente (OS-Symbol, Hostname, Container-/Docker-Statusindikatoren, etc.), die auf der Haupt-Shell nützlich sind, aber jeden PowerShell-Prompt in diesem Container mit Unordnung überladen und verlangsamen würden. Das Setzen von `$env:STARSHIP_CONFIG` überschreibt vollständig, welche Konfigurationsdatei Starship liest – es findet keine Zusammenführung mit `~/.config/starship.toml` des Hosts statt und es erfolgt auch kein Rückgriff darauf, daher bleiben die beiden vollständig unabhängig.
+
+Die gebündelte Konfigurationsdatei (`modules/starship-pwshenv.toml`) enthält eine minimale, für den Container optimierte Starship-Prompt-Konfiguration mit nur den Wesentlichen: aktuelles Verzeichnis, Git-Branch, Git-Status und das Eingabeaufforderungszeichen. Keine benutzerdefinierten Module, keine externen Command Shells, keine Container-/Host-/OS-Segmente. Während der Installation wird diese Datei an den festen Pfad `/etc/pwshenv/starship.toml` innerhalb des Containers kopiert. Um ein anderes Prompt-Aussehen zu haben, lässt sich `modules/starship-pwshenv.toml` im Repository vor dem Ausführen von `install.sh` bearbeiten, oder die Kopie nach der Installation direkt unter `/etc/pwshenv/starship.toml` innerhalb des Containers verändern.
 
 ## Optionen für das Home-Verzeichnis
 

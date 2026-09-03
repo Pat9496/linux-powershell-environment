@@ -225,10 +225,14 @@ These flags only take effect on a plain run or `--clean-reinstall` (both of whic
 When enabled, the script adds this line to PowerShell's all-users profile inside the container:
 
 ```powershell
-if (Get-Command starship -ErrorAction SilentlyContinue) { Invoke-Expression (&starship init powershell) }
+if (Get-Command starship -ErrorAction SilentlyContinue) { $env:STARSHIP_CONFIG = '/etc/pwshenv/starship.toml'; Invoke-Expression (&starship init powershell) }
 ```
 
 This line is runtime-guarded—it checks for the `starship` command at each PowerShell session startup and silently does nothing if `starship` is not reachable at that moment. This matters because whether a host-installed `starship` binary is visible inside the container depends on which home-directory mode was chosen at install time (existing home vs. separate PWSHenv home) and how your container's PATH is configured. Because host-time detection cannot perfectly predict container-time availability, the runtime guard ensures Starship integration never breaks a PowerShell session if the binary becomes unavailable later.
+
+The profile line sets `$env:STARSHIP_CONFIG` to point at a dedicated container-only configuration file, `/etc/pwshenv/starship.toml`, rather than your host's own Starship configuration. This isolation is deliberate: host shell configurations often include slow custom modules (e.g., SSH connection checks that shell-exec external commands) and numerous visual segments (OS icon, hostname, container/docker status indicators, etc.) that are useful on your main shell but would clutter and slow down every PowerShell prompt inside this container. Setting `$env:STARSHIP_CONFIG` fully overrides which configuration file Starship reads—it does not merge with or fall back to your host's `~/.config/starship.toml`, so the two stay completely independent.
+
+The bundled configuration file (`modules/starship-pwshenv.toml`) contains a minimal, container-optimized Starship prompt config with only the essentials: current directory, git branch, git status, and the command-prompt character. No custom modules, no external command shells, no container/host/OS segments. During setup, this file is copied to the fixed path `/etc/pwshenv/starship.toml` inside the container. If you want a different prompt appearance, you can edit `modules/starship-pwshenv.toml` in the repository before running `install.sh`, or modify the copy directly at `/etc/pwshenv/starship.toml` inside the container after setup.
 
 ## Home Directory Options
 

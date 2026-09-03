@@ -97,8 +97,22 @@ function Add-StarshipInitToAllUsersProfile {
     # Runtime-guarded (Get-Command ... -ErrorAction SilentlyContinue) so this line silently
     # no-ops on every future session start if Starship isn't actually reachable inside the
     # container at that time — install-time host detection can't perfectly predict
-    # container-time availability across home-directory sharing modes.
-    $starshipInitLine = 'if (Get-Command starship -ErrorAction SilentlyContinue) { Invoke-Expression (&starship init powershell) }'
+    # container-time availability across home-directory sharing modes. Points STARSHIP_CONFIG
+    # at a dedicated bundled config instead of the user's own ~/.config/starship.toml, since
+    # that host config is typically loaded with slow custom modules (e.g. SSH-check shell-outs)
+    # and visual clutter (OS/host/container segments) that don't belong in this container's
+    # PowerShell prompt.
+    $starshipConfigDir = '/etc/pwshenv'
+    $starshipConfigDest = Join-Path -Path $starshipConfigDir -ChildPath 'starship.toml'
+    $starshipConfigSource = Join-Path -Path $PSScriptRoot -ChildPath 'starship-pwshenv.toml'
+
+    if (-not (Test-Path -Path $starshipConfigDir)) {
+        New-Item -ItemType Directory -Path $starshipConfigDir -Force | Out-Null
+    }
+
+    Copy-Item -Path $starshipConfigSource -Destination $starshipConfigDest -Force
+
+    $starshipInitLine = "if (Get-Command starship -ErrorAction SilentlyContinue) { `$env:STARSHIP_CONFIG = '$starshipConfigDest'; Invoke-Expression (&starship init powershell) }"
     $pattern = [regex]::Escape($starshipInitLine)
     $alreadyPresent = Select-String -Path $profilePath -Pattern $pattern -Quiet
 
