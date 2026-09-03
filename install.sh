@@ -174,15 +174,15 @@ chezmoi_available_and_initialized() {
 # Appends the PATH export using a literal ${HOME}/$PATH so the rc file's own
 # shell expands them at startup, not this script (same literal-vs-expanded
 # care as the plain-reminder message printed below when chezmoi is unusable).
-# Idempotency is checked against the ${HOME}-relative suffix of HOST_BIN_DIR
-# (".local/bin") rather than HOST_BIN_DIR's own already-expanded value, since
-# the appended line never contains that expanded value literally.
+# Idempotency is checked via an exact full-line match against the literal
+# HOST_BIN_PATH_EXPORT_LINE constant, consistent with strip_host_bin_path_line
+# below, so an unrelated line that merely mentions .local/bin can't cause a
+# false "already present" match.
 add_host_bin_to_path_via_chezmoi() {
-  local rc_file home_suffix add_cmd
+  local rc_file add_cmd
   rc_file="$(resolve_shell_rc_file)"
-  home_suffix="${HOST_BIN_DIR#"${HOME}"}"
 
-  if ! grep -qF -- "${home_suffix}" "${rc_file}" 2>/dev/null; then
+  if ! grep -qxF -- "${HOST_BIN_PATH_EXPORT_LINE}" "${rc_file}" 2>/dev/null; then
     printf '%s\n' "${HOST_BIN_PATH_EXPORT_LINE}" >> "${rc_file}"
   fi
 
