@@ -157,22 +157,27 @@ Das Bootstrap-Skript innerhalb des Containers installiert Folgendes:
 
 ### PowerShell-Module
 
-Das Skript installiert diese PowerShell-Module im systemweiten (AllUsers) Umfang:
+Das Skript installiert diese PowerShell-Module im systemweiten (AllUsers) Umfang. Sechs von ihnen werden bei jeder Sitzung automatisch geladen; die anderen sechs sind installiert, werden aber bedarfsweise importiert.
+
+**Bei jedem Sitzungsstart automatisch importiert:**
 
 - `Microsoft.Graph.Authentication` — erforderliches Basis-Modul für `Connect-MgGraph`; jedes andere Graph-Submodul hängt davon ab
 - `Microsoft.Graph.Users` — Entra ID- / Microsoft 365-Benutzerverwaltung
 - `Microsoft.Graph.Groups` — Entra ID- / Microsoft 365-Gruppenverwaltung
+- `MicrosoftTeams` — Microsoft Teams-Verwaltung
+- `ExchangeOnlineManagement` — Exchange Online-Administration
+- `PnP.PowerShell` — SharePoint PnP-Operationen
+
+**Installiert, bedarfsweise importiert:**
+
 - `Microsoft.Graph.Identity.DirectoryManagement` — Entra ID-Verzeichnis- / Mandanten-Objekte (Domains, Organisationsinformationen, etc.)
 - `Microsoft.Graph.Applications` — Entra ID-App-Registrierungen und Service Principals
 - `Microsoft.Graph.Teams` — Microsoft Teams-Verwaltung via Graph
 - `Microsoft.Graph.Sites` — SharePoint Online-Verwaltung via Graph
 - `Microsoft.Graph.Mail` — Exchange / Microsoft 365-Mail via Graph (ergänzt das separate `ExchangeOnlineManagement`-Modul, das vollständige EXO-Administration übernimmt)
-- `ExchangeOnlineManagement` — Exchange Online-Administration
-- `MicrosoftTeams` — Microsoft Teams-Verwaltung
 - `Az` — Azure-Verwaltung
-- `PnP.PowerShell` — SharePoint PnP-Operationen
 
-Alle Module werden mit `-Scope AllUsers` (systemweit, verfügbar für jeden Container-Benutzer) installiert und aktiv ins PowerShell-Profil für alle Benutzer importiert, sodass jede neue PowerShell-Sitzung im Container sie automatisch lädt. Die Installation überspringt Module idempotent, falls bereits vorhanden bei nachfolgenden Läufen, und der Profil-Import-Eintrag wird nur einmal hinzugefügt und bei erneuten Läufen nicht dupliziert. Da `-Scope AllUsers` erhöhte Privilegien erfordert, wird die Modul-Installation via `sudo` innerhalb des Containers ausgeführt – auf dem Host ist während `install.sh` keine Erhöhung erforderlich. Diese speziellen Microsoft.Graph-Submodule ermöglichen eine engere, schnellere Installation und decken gleichzeitig den zentralen Admin-Umfang ab: Entra ID, Teams, SharePoint und Mail.
+Alle Module werden mit `-Scope AllUsers` (systemweit, verfügbar für jeden Container-Benutzer) installiert. Die Module der ersten Gruppe werden aktiv ins PowerShell-Profil für alle Benutzer importiert, sodass jede neue Sitzung sie automatisch lädt. Die Module der zweiten Gruppe bleiben vollständig installiert und verwendbar; sie werden bei Bedarf mit `Import-Module <name>` importiert. Diese Aufteilung optimiert die PowerShell-Sitzungsstartzeit – mehrere Module, insbesondere `Az` und `MicrosoftTeams`, sind langsam beim Importieren, und das Laden aller zwölf Module bei jedem Sitzungsstart verlangsamte ihn spürbar. Die Installation überspringt Module idempotent, falls bereits vorhanden bei nachfolgenden Läufen, und der Profil-Import-Eintrag wird nur einmal hinzugefügt und bei erneuten Läufen nicht dupliziert. Da `-Scope AllUsers` erhöhte Privilegien erfordert, wird die Modul-Installation via `sudo` innerhalb des Containers ausgeführt – auf dem Host ist während `install.sh` keine Erhöhung erforderlich. Diese speziellen Microsoft.Graph-Submodule ermöglichen eine engere, schnellere Installation und decken gleichzeitig den zentralen Admin-Umfang ab: Entra ID, Teams, SharePoint und Mail.
 
 ### Hinweis: Kein lokales Active Directory-Modul
 

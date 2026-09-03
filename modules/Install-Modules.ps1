@@ -36,6 +36,18 @@ $requiredModules = @(
     'PnP.PowerShell'
 )
 
+# Only these get an Import-Module line persisted into the all-users profile, so every future
+# session doesn't eagerly load all 12 modules (several, especially Az and MicrosoftTeams, are slow
+# to import). The rest are still installed and importable on demand via Import-Module <name>.
+$autoImportModules = @(
+    'Microsoft.Graph.Authentication',
+    'Microsoft.Graph.Users',
+    'Microsoft.Graph.Groups',
+    'MicrosoftTeams',
+    'ExchangeOnlineManagement',
+    'PnP.PowerShell'
+)
+
 $failedModules = [System.Collections.Generic.List[string]]::new()
 
 function Initialize-AllUsersProfile {
@@ -125,12 +137,17 @@ foreach ($moduleName in $requiredModules) {
         continue
     }
 
-    try {
-        Add-ModuleToAllUsersProfile -ModuleName $moduleName
-        Write-Host "Activated module '$moduleName' for all future sessions (added to the all-users profile)." -ForegroundColor Green
+    if ($autoImportModules -contains $moduleName) {
+        try {
+            Add-ModuleToAllUsersProfile -ModuleName $moduleName
+            Write-Host "Activated module '$moduleName' for all future sessions (added to the all-users profile)." -ForegroundColor Green
+        }
+        catch {
+            Write-Warning "Failed to add module '$moduleName' to the all-users profile ('$($PROFILE.AllUsersAllHosts)'): $($_.Exception.Message)"
+        }
     }
-    catch {
-        Write-Warning "Failed to add module '$moduleName' to the all-users profile ('$($PROFILE.AllUsersAllHosts)'): $($_.Exception.Message)"
+    else {
+        Write-Host "Module '$moduleName' installed and available; run Import-Module $moduleName when needed." -ForegroundColor Cyan
     }
 }
 
