@@ -86,7 +86,17 @@ The wrapper execs into the `PWSHenv` container and starts PowerShell. If you run
 
 **Adding `~/.local/bin` to PATH:** If `~/.local/bin` is not already on your `PATH`, the installation script handles it as follows:
 
-- **With chezmoi:** If chezmoi is installed and initialized on your host system (has a source directory), the script automatically appends `export PATH="${HOME}/.local/bin:$PATH"` to your shell startup file (`~/.bashrc` if you use Bash, `~/.zshrc` if you use Zsh). This addition is idempotent—if the line is already present, nothing is duplicated. The script then captures this change into chezmoi's source state using `chezmoi add` (or `chezmoi re-add` if the startup file was already chezmoi-managed). The change is now part of your chezmoi source state and will apply like any other chezmoi-managed change when you run `chezmoi apply` on this or other machines (after syncing your source repository).
+- **With chezmoi:** If chezmoi is installed and initialized on your host system (has a source directory) and `~/.local/bin` is not yet on your PATH, the script prompts you for confirmation before making any change:
+
+```
+chezmoi is installed and initialized. The following change can be captured:
+  File: <rc_file>
+  Line: export PATH="${HOME}/.local/bin:$PATH"
+  Command: chezmoi <add|re-add> <rc_file>
+Proceed? [y/N]:
+```
+
+If you answer yes, the script appends the line to your shell startup file (`~/.bashrc` if you use Bash, `~/.zshrc` if you use Zsh) and captures this change into chezmoi's source state using `chezmoi add` (or `chezmoi re-add` if the startup file was already chezmoi-managed). The change is now part of your chezmoi source state and will apply like any other chezmoi-managed change when you run `chezmoi apply` on this or other machines (after syncing your source repository). If you decline, the script falls back to the manual reminder below instead.
 - **Without chezmoi:** If chezmoi is not installed or not initialized, the script prints a reminder. Manually add this line to your shell startup file:
 
 ```bash
@@ -107,7 +117,7 @@ To reset PowerShell's user configuration inside the container without recreating
 
 This flag requires the `PWSHenv` container to already exist. The script will prompt for confirmation, then remove `~/.config/powershell`, `~/.cache/powershell`, and `~/.local/share/powershell` inside the container (erasing the profile, module state, and history) without touching or rebuilding anything else.
 
-If chezmoi is installed and initialized, and your shell startup file is already chezmoi-managed, `--reset-config` also refreshes the PATH configuration line: it removes and re-appends `export PATH="${HOME}/.local/bin:$PATH"` to your startup file and re-captures that change with chezmoi. This gives you an explicit way to force a clean refresh of the chezmoi-captured configuration. If chezmoi is not in use, or the startup file is not managed by chezmoi, this behavior does not apply—`--reset-config` behaves exactly as described above with no additional changes.
+If chezmoi is installed and initialized, and your shell startup file is already chezmoi-managed, `--reset-config` also offers to refresh the PATH configuration line. The script shows the same confirmation prompt as during initial setup and asks whether to remove and re-append `export PATH="${HOME}/.local/bin:$PATH"` to your startup file and re-capture the change with chezmoi. If you decline, the startup file is not touched. If chezmoi is not in use, or the startup file is not managed by chezmoi, this behavior does not apply—`--reset-config` behaves exactly as described above with no additional changes.
 
 To view the help message and see all available flags, run:
 
@@ -180,7 +190,13 @@ PWSHenv can optionally integrate the Starship cross-shell prompt into PowerShell
 - `--use-starship` — Force-enable Starship prompt integration.
 - `--no-starship` — Force-disable it.
 
-If neither flag is given, Starship integration is auto-detected silently: if the `starship` command is found on your host's `PATH`, it is enabled; otherwise it is disabled.
+If neither flag is given, the script prompts you interactively:
+
+```
+Enable Starship prompt integration for PowerShell? [Y/n]:
+```
+
+The default answer shown ([Y/n] format, with the capital letter indicating the default) is pre-filled based on whether the `starship` command is found on your host's `PATH`—if found, the default is yes; if not found, the default is no. You can always answer either way, overriding the suggested default.
 
 These flags only take effect on a plain run or `--clean-reinstall` (both of which run the module installer inside the container). Combining either flag with `--reset-config` is an error, because `--reset-config` never re-runs the module installer, so the flag would have no effect.
 

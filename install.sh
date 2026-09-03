@@ -178,6 +178,24 @@ chezmoi_available_and_initialized() {
 # HOST_BIN_PATH_EXPORT_LINE constant, consistent with strip_host_bin_path_line
 # below, so an unrelated line that merely mentions .local/bin can't cause a
 # false "already present" match.
+confirm_chezmoi_path_change() {
+  local rc_file="$1" add_cmd="$2"
+  printf 'chezmoi is installed and initialized. The following change can be captured:\n' >&2
+  printf '  File: %s\n' "${rc_file}" >&2
+  printf '  Line: %s\n' "${HOST_BIN_PATH_EXPORT_LINE}" >&2
+  printf '  Command: chezmoi %s %s\n' "${add_cmd}" "${rc_file}" >&2
+  prompt_yes_no "Proceed?" "n"
+}
+
+# Shared between the chezmoi-unavailable branch and the chezmoi-declined
+# branch of check_host_bin_on_path, so the manual reminder text stays in
+# exactly one place.
+print_manual_path_reminder() {
+  # $PATH here is literal text for the user's ~/.bashrc, not meant to expand in this script.
+  # shellcheck disable=SC2016
+  printf 'Add it to your shell startup file (e.g. export PATH="%s:$PATH" in ~/.bashrc) so the %s command is found.\n' "${HOST_BIN_DIR}" "${HOST_WRAPPER_NAME}" >&2
+}
+
 add_host_bin_to_path_via_chezmoi() {
   local rc_file add_cmd
   rc_file="$(resolve_shell_rc_file)"
@@ -220,6 +238,7 @@ refresh_chezmoi_path_line_if_managed() {
   chezmoi_available_and_initialized || return 0
   rc_file="$(resolve_shell_rc_file)"
   chezmoi source-path "${rc_file}" >/dev/null 2>&1 || return 0
+  confirm_chezmoi_path_change "${rc_file}" "re-add" || return 0
   strip_host_bin_path_line "${rc_file}"
   add_host_bin_to_path_via_chezmoi
 }
@@ -230,11 +249,17 @@ check_host_bin_on_path() {
     *)
       printf '\nNote: %s is not on your PATH.\n' "${HOST_BIN_DIR}" >&2
       if chezmoi_available_and_initialized; then
-        add_host_bin_to_path_via_chezmoi
+        local rc_file add_cmd
+        rc_file="$(resolve_shell_rc_file)"
+        add_cmd="add"
+        chezmoi source-path "${rc_file}" >/dev/null 2>&1 && add_cmd="re-add"
+        if confirm_chezmoi_path_change "${rc_file}" "${add_cmd}"; then
+          add_host_bin_to_path_via_chezmoi
+        else
+          print_manual_path_reminder
+        fi
       else
-        # $PATH here is literal text for the user's ~/.bashrc, not meant to expand in this script.
-        # shellcheck disable=SC2016
-        printf 'Add it to your shell startup file (e.g. export PATH="%s:$PATH" in ~/.bashrc) so the %s command is found.\n' "${HOST_BIN_DIR}" "${HOST_WRAPPER_NAME}" >&2
+        print_manual_path_reminder
       fi
       ;;
   esac
@@ -305,8 +330,9 @@ usage() {
   printf '                     Cannot be combined with --no-starship.\n'
   printf '  --no-starship      Force-disable Starship PowerShell prompt integration.\n'
   printf '                     Same restrictions as --use-starship. With neither flag\n'
-  printf '                     given, this is auto-detected from whether "starship" is\n'
-  printf '                     found on the host'"'"'s PATH.\n'
+  printf '                     given, you'"'"'ll be asked interactively, with the default\n'
+  printf '                     answer pre-filled based on whether "starship" is found on\n'
+  printf '                     the host'"'"'s PATH.\n'
   printf '  -h, --help         Show this help message and exit.\n'
 }
 
@@ -366,10 +392,14 @@ main() {
     starship_decision="true"
   elif (( do_no_starship )); then
     starship_decision="false"
-  elif command -v starship >/dev/null 2>&1; then
-    starship_decision="true"
   else
-    starship_decision="false"
+    local starship_prompt_default="n"
+    command -v starship >/dev/null 2>&1 && starship_prompt_default="y"
+    if prompt_yes_no "Enable Starship prompt integration for PowerShell?" "${starship_prompt_default}"; then
+      starship_decision="true"
+    else
+      starship_decision="false"
+    fi
   fi
 
   local home_mode pwshenv_home=""

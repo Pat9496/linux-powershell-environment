@@ -86,7 +86,17 @@ Das Wrapper-Skript wird in den `PWSHenv`-Container ausgeführt und startet Power
 
 **`~/.local/bin` zu PATH hinzufügen:** Falls `~/.local/bin` nicht bereits in `PATH` aufgenommen ist, wird das Installationsskript wie folgt verfahren:
 
-- **Mit chezmoi:** Falls chezmoi auf dem Host-System installiert und initialisiert ist (ein Source-Verzeichnis vorhanden ist), wird die Zeile `export PATH="${HOME}/.local/bin:$PATH"` automatisch zur Shell-Startdatei (`~/.bashrc` bei Bash, `~/.zshrc` bei Zsh) hinzugefügt. Diese Addition ist idempotent – ist die Zeile bereits vorhanden, wird nichts dupliziert. Das Skript erfasst diese Änderung dann im Source-State von chezmoi mit `chezmoi add` (oder `chezmoi re-add`, falls die Startdatei bereits von chezmoi verwaltet wurde). Die Änderung ist nun Teil des chezmoi-Source-State und wird wie jede andere chezmoi-verwaltete Änderung angewendet, wenn `chezmoi apply` auf diesem oder anderen Rechnern ausgeführt wird (nach der Synchronisierung des Source-Repository).
+- **Mit chezmoi:** Falls chezmoi auf dem Host-System installiert und initialisiert ist (ein Source-Verzeichnis vorhanden ist) und `~/.local/bin` nicht bereits in `PATH` aufgenommen ist, fordert das Skript zur Bestätigung auf, bevor Änderungen vorgenommen werden:
+
+```
+chezmoi is installed and initialized. The following change can be captured:
+  File: <rc_file>
+  Line: export PATH="${HOME}/.local/bin:$PATH"
+  Command: chezmoi <add|re-add> <rc_file>
+Proceed? [y/N]:
+```
+
+Bei Antwort „ja" fügt das Skript die Zeile zur Shell-Startdatei hinzu (`~/.bashrc` bei Bash, `~/.zshrc` bei Zsh) und erfasst diese Änderung im Source-State von chezmoi mit `chezmoi add` (oder `chezmoi re-add`, falls die Startdatei bereits von chezmoi verwaltet wurde). Die Änderung ist nun Teil des chezmoi-Source-State und wird wie jede andere chezmoi-verwaltete Änderung angewendet, wenn `chezmoi apply` auf diesem oder anderen Rechnern ausgeführt wird (nach der Synchronisierung des Source-Repository). Bei Ablehnung fällt das Skript stattdessen auf die manuelle Erinnerung weiter unten zurück.
 - **Ohne chezmoi:** Falls chezmoi nicht installiert oder nicht initialisiert ist, gibt das Skript eine Erinnerung aus. Die folgende Zeile zur Shell-Startdatei hinzufügen:
 
 ```bash
@@ -107,7 +117,7 @@ Um die PowerShell-Benutzerkonfiguration innerhalb des Containers zurückzusetzen
 
 Das Flag erfordert, dass der `PWSHenv`-Container bereits existiert. Das Skript fordert zur Bestätigung auf und entfernt dann `~/.config/powershell`, `~/.cache/powershell` und `~/.local/share/powershell` innerhalb des Containers (wobei das Profil, der Modulzustand und die Historie gelöscht werden), ohne andere Komponenten zu berühren oder neu zu erstellen.
 
-Falls chezmoi installiert und initialisiert ist und die Shell-Startdatei bereits von chezmoi verwaltet wird, aktualisiert `--reset-config` auch die PATH-Konfigurationszeile: Die Zeile `export PATH="${HOME}/.local/bin:$PATH"` wird aus der Startdatei entfernt und wieder hinzugefügt, und die Änderung wird mit chezmoi erneut erfasst. Dies bietet eine explizite Möglichkeit, die chezmoi-erfasste Konfiguration zu aktualisieren. Falls chezmoi nicht verwendet wird oder die Startdatei nicht von chezmoi verwaltet wird, gilt dieses Verhalten nicht – `--reset-config` verhält sich genau wie oben beschrieben, ohne zusätzliche Änderungen.
+Falls chezmoi installiert und initialisiert ist und die Shell-Startdatei bereits von chezmoi verwaltet wird, bietet `--reset-config` auch an, die PATH-Konfigurationszeile zu aktualisieren. Das Skript zeigt die gleiche Bestätigungsaufforderung wie beim initialen Setup und fragt, ob die Zeile `export PATH="${HOME}/.local/bin:$PATH"` aus der Startdatei entfernt und erneut hinzugefügt und die Änderung mit chezmoi erneut erfasst werden soll. Bei Ablehnung wird die Startdatei nicht berührt. Falls chezmoi nicht verwendet wird oder die Startdatei nicht von chezmoi verwaltet wird, gilt dieses Verhalten nicht – `--reset-config` verhält sich genau wie oben beschrieben, ohne zusätzliche Änderungen.
 
 Um die Hilfemeldung anzuzeigen und alle verfügbaren Flags zu sehen:
 
@@ -180,7 +190,13 @@ PWSHenv kann optional die Starship Cross-Shell-Prompt-Integration in PowerShell 
 - `--use-starship` — Erzwungene Aktivierung der Starship-Prompt-Integration.
 - `--no-starship` — Erzwungene Deaktivierung der Integration.
 
-Falls weder Flag angegeben ist, wird die Starship-Integration automatisch erkannt: Falls der Befehl `starship` in `PATH` des Hosts vorhanden ist, wird sie aktiviert; andernfalls wird sie deaktiviert.
+Falls weder Flag angegeben ist, fordert das Skript interaktiv auf:
+
+```
+Enable Starship prompt integration for PowerShell? [Y/n]:
+```
+
+Die angezeigte Standardantwort ([Y/n]-Format, wobei der Großbuchstabe die Voreinstellung angibt) wird basierend darauf vorausgefüllt, ob der Befehl `starship` in der `PATH` des Hosts vorhanden ist – falls gefunden, ist die Voreinstellung ja; falls nicht gefunden, ist die Voreinstellung nein. Es ist immer möglich, auf eine beliebige Weise zu antworten und die vorgeschlagene Voreinstellung zu überschreiben.
 
 Diese Flags wirken sich nur auf einen normalen Lauf oder `--clean-reinstall` aus (beide führen das Modul-Installationsskript innerhalb des Containers aus). Das Kombinieren eines der Flags mit `--reset-config` ist ein Fehler, da `--reset-config` nie das Modul-Installationsskript erneut ausführt, daher hätte das Flag keine Wirkung.
 
