@@ -18,6 +18,7 @@ Ein automatisiertes Installationsskript für eine Distrobox-basierte PowerShell 
   - [Host-Befehl und Eintrag im Anwendungsmenü](#host-befehl-und-eintrag-im-anwendungsmenü)
 - [PowerShell-Konfiguration zurücksetzen](#powershell-konfiguration-zurücksetzen)
 - [Bereinigte Neuinstallation](#bereinigte-neuinstallation)
+- [PowerShell und Module aktualisieren](#powershell-und-module-aktualisieren)
 - [Was wird installiert](#was-wird-installiert)
   - [PowerShell-Module](#powershell-module)
   - [Hinweis: Kein lokales Active Directory-Modul](#hinweis-kein-lokales-active-directory-modul)
@@ -146,6 +147,22 @@ Das Skript fragt zur expliziten Bestätigung auf, bevor destruktive Aktionen dur
 Im Gegensatz zu `--reset-config`, das PowerShell-Zustand auf einem bestehenden Container löscht, ohne ihn neu zu erstellen, zerstört und rekonstruiert `--clean-reinstall` den Container auch, für einen vollständig sauberen Zustand.
 
 Die Flags `--clean-reinstall` und `--reset-config` schließen sich gegenseitig aus – das Übergeben beider ist ein Fehler.
+
+## PowerShell und Module aktualisieren
+
+Zum Aktualisieren von PowerShell, Basis-apt-Paketen und bereits installierten PowerShell-Modulen im bestehenden `PWSHenv`-Container das `--update`-Flag verwenden:
+
+```bash
+./install.sh --update
+```
+
+Das Flag erfordert, dass der `PWSHenv`-Container bereits existiert. Das Skript führt `apt-get update && apt-get upgrade -y` innerhalb des Containers aus, um alle Pakete zu aktualisieren (einschließlich PowerShell selbst, da es über Microsofts apt-Repository installiert wurde), und ermittelt dann und aktualisiert alle PowerShell-Module, die derzeit installiert sind, über `Get-InstalledModule` und `Update-Module`.
+
+Das `--update`-Flag erstellt den Container bewusst nicht neu und berührt keine bestehende Konfiguration – das Profil für alle Benutzer, Modul-Auto-Import-Einträge, chezmoi-State, Starship-Integration und Home-Verzeichnis bleiben unangetastet. Dies ist eine reine Versions-Bump-Operation ohne Bestätigungsaufforderungen.
+
+Da `--update` installierte Module dynamisch ermittelt, statt eine feste Modulliste zu führen, deckt es natürlich alle Module ab, die jemals im Container installiert wurden, einschließlich Module, die nach dem initialen Setup selbst installiert werden. Falls später ein benutzerdefiniertes PowerShell-Modul hinzugefügt wird, wird es beim nächsten `--update`-Lauf zusammen mit den Basis-Modulen ermittelt und aktualisiert.
+
+Das `--update`-Flag kann nicht mit `--reset-config`, `--clean-reinstall`, `--use-starship` oder `--no-starship` kombiniert werden.
 
 ## Was wird installiert
 

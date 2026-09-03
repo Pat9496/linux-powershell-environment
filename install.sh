@@ -10,6 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 readonly SCRIPT_DIR
 readonly BOOTSTRAP_SCRIPT="${SCRIPT_DIR}/distrobox-bootstrap.sh"
+readonly UPDATE_SCRIPT="${SCRIPT_DIR}/distrobox-update.sh"
 
 readonly CONTAINER_NAME="PWSHenv"
 # Ubuntu is the distro Microsoft publishes PowerShell packages for fastest via
@@ -51,6 +52,7 @@ check_host_prerequisites() {
     die "neither podman nor docker found on host. Distrobox needs one of them."
   fi
   [[ -f "${BOOTSTRAP_SCRIPT}" ]] || die "bootstrap script not found at ${BOOTSTRAP_SCRIPT}"
+  [[ -f "${UPDATE_SCRIPT}" ]] || die "update script not found at ${UPDATE_SCRIPT}"
 }
 
 container_exists() {
@@ -286,6 +288,19 @@ reset_pwshenv_config() {
   refresh_chezmoi_path_line_if_managed
 }
 
+# Bumps PowerShell, baseline apt packages, and already-installed PowerShell
+# modules in place inside the existing container. Deliberately does not touch
+# the profile/module-auto-import configuration, chezmoi, Starship, or the
+# container's home directory at all -- unlike reset_pwshenv_config above, this
+# is purely a "bump versions" operation with nothing to prompt for.
+update_pwshenv() {
+  local name="$1"
+  container_exists "${name}" || die "container \"${name}\" does not exist. Run install.sh without any flags first to create it."
+  printf 'Updating PowerShell, baseline packages, and installed PowerShell modules inside "%s"...\n' "${name}"
+  distrobox enter --name "${name}" -- bash "${UPDATE_SCRIPT}"
+  printf 'Update complete inside container "%s". Existing configuration (profile, chezmoi, Starship, home directory) was not changed.\n' "${name}"
+}
+
 # Purges PowerShell's state directories directly on the host filesystem
 # (not via `distrobox enter`), because this runs before the container
 # exists: the caller has already resolved which host directory will be
@@ -308,11 +323,19 @@ purge_powershell_state_dirs() {
 }
 
 usage() {
-  printf 'Usage: %s [--reset-config | --clean-reinstall] [--use-starship | --no-starship] [-h|--help]\n' "$(basename -- "$0")"
+  printf 'Usage: %s [--reset-config | --clean-reinstall | --update] [--use-starship | --no-starship] [-h|--help]\n' "$(basename -- "$0")"
   printf '\n'
   printf '  (no flags)         Create (or recreate) the %s Distrobox container and\n' "${CONTAINER_NAME}"
   printf '                     install PowerShell 7 and its modules inside it. Also\n'
   printf '                     installs a "%s" host command to enter it directly.\n' "${HOST_WRAPPER_NAME}"
+  printf '  --update           Update PowerShell, baseline apt packages, and already-\n'
+  printf '                     installed PowerShell modules inside the existing %s\n' "${CONTAINER_NAME}"
+  printf '                     container, in place. Requires the container to already\n'
+  printf '                     exist. Does not recreate the container and does not\n'
+  printf '                     touch existing configuration (profile, module auto-\n'
+  printf '                     import, chezmoi, Starship, or the home directory).\n'
+  printf '                     Cannot be combined with --reset-config,\n'
+  printf '                     --clean-reinstall, --use-starship, or --no-starship.\n'
   printf '  --reset-config     Reset PowerShell'"'"'s user configuration inside the\n'
   printf '                     existing %s container (profile, module state,\n' "${CONTAINER_NAME}"
   printf '                     history) without recreating the container. Requires\n'
@@ -337,7 +360,7 @@ usage() {
 }
 
 main() {
-  local do_reset_config=0 do_clean_reinstall=0 do_use_starship=0 do_no_starship=0
+  local do_reset_config=0 do_clean_reinstall=0 do_update=0 do_use_starship=0 do_no_starship=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -347,6 +370,10 @@ main() {
         ;;
       --clean-reinstall)
         do_clean_reinstall=1
+        shift
+        ;;
+      --update)
+        do_update=1
         shift
         ;;
       --use-starship)
@@ -372,6 +399,10 @@ main() {
     die "--clean-reinstall and --reset-config cannot be combined"
   fi
 
+  if (( do_update && ( do_reset_config || do_clean_reinstall ) )); then
+    die "--update cannot be combined with --reset-config or --clean-reinstall"
+  fi
+
   if (( do_use_starship && do_no_starship )); then
     die "--use-starship and --no-starship cannot be combined"
   fi
@@ -380,10 +411,19 @@ main() {
     die "--use-starship/--no-starship have no effect with --reset-config, since it never re-runs the module installer"
   fi
 
+  if (( do_update && ( do_use_starship || do_no_starship ) )); then
+    die "--use-starship/--no-starship have no effect with --update, since it never re-runs the module installer"
+  fi
+
   check_host_prerequisites
 
   if (( do_reset_config )); then
     reset_pwshenv_config "${CONTAINER_NAME}"
+    exit 0
+  fi
+
+  if (( do_update )); then
+    update_pwshenv "${CONTAINER_NAME}"
     exit 0
   fi
 

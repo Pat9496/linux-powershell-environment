@@ -18,6 +18,7 @@ An automated setup script for a Distrobox-based PowerShell 7 environment tailore
   - [Host Command and Application Menu Entry](#host-command-and-application-menu-entry)
 - [Resetting PowerShell Configuration](#resetting-powershell-configuration)
 - [Clean Reinstall](#clean-reinstall)
+- [Updating PowerShell and Modules](#updating-powershell-and-modules)
 - [What Gets Installed](#what-gets-installed)
   - [PowerShell Modules](#powershell-modules)
   - [Note: No Local Active Directory Module](#note-no-local-active-directory-module)
@@ -146,6 +147,22 @@ The script will prompt for explicit confirmation before performing any destructi
 Unlike `--reset-config`, which clears PowerShell state on an existing container without rebuilding it, `--clean-reinstall` destroys and recreates the container too, for a fully clean slate.
 
 The `--clean-reinstall` and `--reset-config` flags are mutually exclusive—passing both is an error.
+
+## Updating PowerShell and Modules
+
+To update PowerShell, baseline apt packages, and already-installed PowerShell modules inside the existing `PWSHenv` container in place, use the `--update` flag:
+
+```bash
+./install.sh --update
+```
+
+This flag requires the `PWSHenv` container to already exist. The script runs `apt-get update && apt-get upgrade -y` inside the container to update all packages (including PowerShell itself, since it was installed via Microsoft's apt repository), then discovers and updates whatever PowerShell modules are currently installed via `Get-InstalledModule` and `Update-Module`.
+
+The `--update` flag deliberately does not recreate the container and does not touch existing configuration—the all-users profile, module auto-import entries, chezmoi state, Starship integration, and home directory are left untouched. This is purely a version-bump operation with no prompts.
+
+Because `--update` discovers installed modules dynamically rather than maintaining a fixed module list, it naturally covers any module ever installed in the container, including modules you install yourself after the initial setup. If you add a custom PowerShell module later, the next `--update` run will discover and update it alongside the baseline modules.
+
+The `--update` flag cannot be combined with `--reset-config`, `--clean-reinstall`, `--use-starship`, or `--no-starship`.
 
 ## What Gets Installed
 
